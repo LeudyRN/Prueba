@@ -1,24 +1,3 @@
--- Crear base de datos
-CREATE DATABASE PruebaDB_Shift_Medic_DB_oraora
-USER sys IDENTIFIED BY RLN123456e
-USER system IDENTIFIED BY RLN123456e
-LOGFILE GROUP 1 ('D:\PROGRAMS\ORACLEDB\ORADATA\XE\REDO03.LOG') SIZE 100M,
-         GROUP 2 ('D:\PROGRAMS\ORACLEDB\ORADATA\XE\REDO02.LOG') SIZE 100M,
-         GROUP 3 ('D:\PROGRAMS\ORACLEDB\ORADATA\XE\REDO01.LOG') SIZE 100M
-MAXLOGFILES 5
-MAXLOGMEMBERS 5
-MAXDATAFILES 100
-CHARACTER SET utf8
-DEFAULT TABLESPACE xeXDB
-DEFAULT TEMPORARY TABLESPACE TEMP;
-
-CREATE DATABASE PruebaDB_Shift_Medic_DB_oraora22222
-CHARACTER SET utf8
-DEFAULT TABLESPACE xeXDB
-DEFAULT TEMPORARY TABLESPACE TEMP;
-
-CREATE USER leudyrn IDENTIFIED BY RLN12345e;
-
 
 -- Creación de la tabla Planes de Seguro
 CREATE TABLE Planes_de_Seguro (
@@ -54,6 +33,7 @@ CREATE TABLE Pacientes (
 );
 
 CREATE INDEX idx_Planes_de_Seguro_Nombre_Plan ON Planes_de_Seguro(Nombre_Plan);
+CREATE INDEX idx_nombre_paciente ON Pacientes(Nombre);
 
 -- Creación de la tabla Centros de atención médica
 CREATE TABLE Centros_Atencion (
@@ -122,6 +102,7 @@ CREATE TABLE Solicitud_Autorizacion (
     CONSTRAINT fk_Paciente FOREIGN KEY (ID_Paciente) REFERENCES Pacientes(ID_Paciente)
 );
 
+
 -- Creación de la tabla Autorización
 CREATE TABLE Autorizacion (
     ID_Autorizacion NUMBER PRIMARY KEY,
@@ -158,6 +139,12 @@ CREATE TABLE Historial_Médico (
     CONSTRAINT fk_Historial_Medico_Paciente FOREIGN KEY (ID_Paciente) REFERENCES Pacientes(ID_Paciente)
 );
 
+CREATE INDEX idx_id_paciente_historial
+ON Historial_Médico(ID_Paciente);
+
+CREATE INDEX idx_id_proveedor_historial
+ON Historial_Médico(ID_Proveedor);
+
 -- Creación de la tabla Facturas
 CREATE TABLE Facturas (
     ID_Factura NUMBER PRIMARY KEY,
@@ -172,6 +159,8 @@ CREATE TABLE Facturas (
     CONSTRAINT fk_Proveedor_Facturas FOREIGN KEY (ID_Proveedor) REFERENCES Proveedor_Atencion_Medica(ID_Proveedor),
     CONSTRAINT fk_Medicamento_Facturas FOREIGN KEY (ID_Medicamento) REFERENCES Medicamentos(ID_Medicamento)
 );
+
+CREATE INDEX idx_id_paciente_facturas ON Facturas(ID_Paciente);
 
 -- Creación de la tabla Pago
 CREATE TABLE Pago (
@@ -236,6 +225,23 @@ BEGIN
 END;
 /
 
+--Para probar el trigger 1
+
+/* Cuando se ejecuta el insert, este falla y generara un error por: Corre_invalido, esto es por el trigger 1
+Se tiene que tirar el select en la secuencia SEQ_PACIENTES.nextval, para validar el incremento cada vez que falla
+
+Al principio dira uno, cuando falle debe de decir 2 y asi sucesivamente
+
+*/
+
+Select * from pacientes
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro) 
+VALUES (20, 'Maria Gomez', '12245525633', TO_DATE('1990-08-17', 'YYYY-MM-DD'), 'Femenino', 'Calle 60', '1234567890', 'correo_invalido', 1); 
+
+SELECT SEQ_PACIENTES.nextval FROM dual;
+
+------------------------------------------------------------
 CREATE OR REPLACE TRIGGER trigger2
 AFTER UPDATE ON Facturas
 FOR EACH ROW
@@ -251,6 +257,15 @@ BEGIN
 END;
 /
 
+--Para probar el trigger2
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado) 
+VALUES (123, 1, 1, 1, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'Pagada'); 
+
+UPDATE Facturas SET Monto_Facturado = 60.00 WHERE ID_Factura = 123;
+
+Select * from auditoria_facturas;
+
+----------------------------------------------------------------------------
 CREATE OR REPLACE TRIGGER trigger3
 AFTER DELETE ON Proveedor_Atencion_Medica
 FOR EACH ROW
@@ -268,6 +283,12 @@ BEGIN
 END;
 /
 
+-- Para probar el Trigger 3
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor) 
+
+VALUES (456, 'Clínica XYZ', 'Cardiología', 'Avenida Principal', '987654321', 'info@clinica.com', 'ABC123', 'Clínica'); 
+
+DELETE FROM Proveedor_Atencion_Medica WHERE ID_Proveedor = 456;
 
 -- Creacion de procedure
 CREATE OR REPLACE PROCEDURE actualizar_paciente(
@@ -324,18 +345,19 @@ CREATE SYNONYM sinonimo2 FOR Proveedor_Atencion_Medica;
 CREATE SYNONYM sinonimo3 FOR Pacientes;
 
 -- Creacion de jobs
-BEGIN
-    DBMS_SCHEDULER.CREATE_JOB(
-        job_name        => 'job1',
-        job_type        => 'PLSQL_BLOCK',
-        job_action      => 'BEGIN actualizar_paciente; END;',
-        start_date      => SYSTIMESTAMP,
-        repeat_interval => 'FREQ=DAILY; INTERVAL=1',
-        end_date        => NULL,
-        enabled         => TRUE
-    );
-END;
+BEGIN 
+    DBMS_SCHEDULER.CREATE_JOB( 
+        job_name        => 'job1', 
+        job_type        => 'PLSQL_BLOCK', 
+        job_action      => 'BEGIN actualizar_paciente(id_paciente); END;', 
+        start_date      => SYSTIMESTAMP, 
+        repeat_interval => 'FREQ=MINUTELY; INTERVAL=1', 
+        end_date        => NULL, 
+        enabled         => TRUE 
+    ); 
+END; 
 /
+
 
 BEGIN
     DBMS_SCHEDULER.CREATE_JOB(
@@ -343,7 +365,7 @@ BEGIN
         job_type        => 'PLSQL_BLOCK',
         job_action      => 'BEGIN calcular_costo_total; END;',
         start_date      => SYSTIMESTAMP,
-        repeat_interval => 'FREQ=WEEKLY; INTERVAL=1',
+        repeat_interval => 'FREQ=MINUTELY; INTERVAL=1',
         end_date        => NULL,
         enabled         => TRUE
     );
@@ -356,85 +378,582 @@ BEGIN
         job_type        => 'PLSQL_BLOCK',
         job_action      => 'BEGIN nueva_solicitud_autorizacion; END;',
         start_date      => SYSTIMESTAMP,
-        repeat_interval => 'FREQ=MONTHLY; INTERVAL=1',
+        repeat_interval => 'FREQ=MINUTELY; INTERVAL=1',
         end_date        => NULL,
         enabled         => TRUE
     );
 END;
 /
 
+SELECT * FROM USER_SCHEDULER_JOB_RUN_DETAILS;
+
 
 --  Creacion de dblink
+GRANT CREATE DATABASE LINK TO usuario1;
+GRANT CREATE SESSION TO usuario1;
+
+
 CREATE DATABASE LINK dblink_to_remote
-CONNECT TO usuario_remote IDENTIFIED BY password_remote
-USING 'nombre_tns';
+CONNECT TO usuario1 IDENTIFIED BY Soporte20
+USING 'XE';
 
 
 -- Scripts para la introduccion de datos a las tablas
 
 -- Inserción de datos en la tabla Planes_de_Seguro
+
+-- Insert para Plan Individual
 INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
 VALUES (1, 'Plan Básico', 'Individual', 'Cobertura básica de salud', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Familiar
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (2, 'Plan Extendido', 'Familiar', 'Cobertura para toda la familia', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Corporativo
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (3, 'Plan Empresarial', 'Corporativo', 'Cobertura para empleados corporativos', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Individual (2)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (4, 'Plan Especial', 'Individual', 'Cobertura especializada', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Familiar (2)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (5, 'Plan Plus', 'Familiar', 'Cobertura premium para familia', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Corporativo (2)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (6, 'Plan Elite', 'Corporativo', 'Cobertura exclusiva para corporaciones', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Individual (3)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (7, 'Plan Premium', 'Individual', 'Cobertura de lujo', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Familiar (3)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (8, 'Plan Avanzado', 'Familiar', 'Cobertura avanzada para familia', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Corporativo (3)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (9, 'Plan Empresarial Plus', 'Corporativo', 'Cobertura premium para empresas', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
+
+-- Insert para Plan Individual (4)
+INSERT INTO Planes_de_Seguro (ID_Plan_Seguro, Nombre_Plan, Tipo_Plan, Cobertura_Medica, Fecha_Inicio_Cobertura, Fecha_Termino)
+VALUES (10, 'Plan Estándar', 'Individual', 'Cobertura estándar', TO_DATE('2024-01-01', 'YYYY-MM-DD'), TO_DATE('2025-01-01', 'YYYY-MM-DD'));
 
 -- Inserción de datos en la tabla Medicamentos
 INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
 VALUES (1, 'Paracetamol', 'Tabletas', 'Alivio del dolor y la fiebre', 10.50);
 
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (101, 'Ibuprofeno', 'Tabletas', 'Alivio del dolor e inflamación', 12.99);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (102, 'Amoxicilina', 'Cápsulas', 'Antibiótico para infecciones', 15.75);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (103, 'Omeprazol', 'Cápsulas', 'Tratamiento de úlceras y acidez', 8.45);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (104, 'Loratadina', 'Tabletas', 'Antihistamínico para alergias', 9.20);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (105, 'Ciprofloxacino', 'Tabletas', 'Antibiótico de amplio espectro', 14.30);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (106, 'Dipirona', 'Solución Inyectable', 'Analgésico y antipirético', 7.80);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (107, 'Lansoprazol', 'Cápsulas', 'Tratamiento de úlceras y acidez', 10.15);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (108, 'Salbutamol', 'Inhalador', 'Broncodilatador para el asma', 18.65);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (109, 'Clonazepam', 'Tabletas', 'Tratamiento de la ansiedad', 11.50);
+
+INSERT INTO Medicamentos (ID_Medicamento, Nombre, Presentacion, Utilidad, Precio)
+VALUES (110, 'Atorvastatina', 'Tabletas', 'Reducción del colesterol', 20.80);
+
+
 -- Inserción de datos en la tabla Pacientes
 INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
 VALUES (1, 'Juan Pérez', '123456789', TO_DATE('1990-05-15', 'YYYY-MM-DD'), 'Masculino', 'Calle 123', '1234567890', 'juan@example.com', 1);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (101, 'María García', '987654321', TO_DATE('1985-08-25', 'YYYY-MM-DD'), 'Femenino', 'Avenida Principal 456', '9876543210', 'maria@example.com', 2);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (102, 'Pedro López', '456789123', TO_DATE('1978-10-10', 'YYYY-MM-DD'), 'Masculino', 'Calle Secundaria 789', '4567891230', 'pedro@example.com', 3);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (103, 'Ana Martínez', '654321987', TO_DATE('1992-03-20', 'YYYY-MM-DD'), 'Femenino', 'Calle 5 de Mayo', '6543219870', 'ana@example.com', 1);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (104, 'Carlos Rodríguez', '321987654', TO_DATE('1980-06-12', 'YYYY-MM-DD'), 'Masculino', 'Avenida Central 789', '3219876540', 'carlos@example.com', 2);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (105, 'Laura Sánchez', '789321654', TO_DATE('1995-12-05', 'YYYY-MM-DD'), 'Femenino', 'Calle Principal 567', '7893216540', 'laura@example.com', 3);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (106, 'Jorge Gómez', '159753258', TO_DATE('1987-09-18', 'YYYY-MM-DD'), 'Masculino', 'Avenida Primaria 123', '1597532580', 'jorge@example.com', 1);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (107, 'Verónica Torres', '753951456', TO_DATE('1990-07-30', 'YYYY-MM-DD'), 'Femenino', 'Calle del Sol', '7539514560', 'veronica@example.com', 2);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (108, 'Miguel Ruiz', '852963147', TO_DATE('1982-04-22', 'YYYY-MM-DD'), 'Masculino', 'Avenida Sur 456', '8529631470', 'miguel@example.com', 3);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (109, 'Silvia Díaz', '369852147', TO_DATE('1993-11-15', 'YYYY-MM-DD'), 'Femenino', 'Calle del Parque', '3698521470', 'silvia@example.com', 1);
+
+INSERT INTO Pacientes (ID_Paciente, Nombre, Cedula, Fecha_Nacimiento, Genero, Direccion, Telefono, Email, ID_Plan_Seguro)
+VALUES (110, 'Luis Hernández', '147258369', TO_DATE('1975-02-28', 'YYYY-MM-DD'), 'Masculino', 'Calle Central 789', '1472583690', 'luis@example.com', 2);
 
 -- Inserción de datos en la tabla Centros_Atencion
 INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
 VALUES (1, 'Hospital', 1);
 
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (101, 'Hospital', 1);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (102, 'Clínica', 2);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (103, 'Consultorio', 3);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (104, 'Hospital', 2);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (105, 'Hospital', 3);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (106, 'Clínica', 1);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (107, 'Consultorio', 2);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (108, 'Hospital', 1);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (109, 'Clínica', 3);
+
+INSERT INTO Centros_Atencion (ID_Centro, Tipo_Centro, ID_Seguro_Aceptado)
+VALUES (110, 'Consultorio', 1);
+
+
 -- Inserción de datos en la tabla Proveedor_Atencion_Medica
 INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
 VALUES (1, 'Clínica XYZ', 'Cardiología', 'Avenida Principal', '987654321', 'info@clinica.com', 'ABC123', 'Clínica');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (101, 'Hospital ABC', 'Cirugía', 'Calle Principal', '123456789', 'info@hospital.com', 'DEF456', 'Hospital');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (102, 'Clínica XYZ', 'Pediatría', 'Avenida Central', '987654321', 'info@clinica.com', 'GHI789', 'Clínica');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (103, 'Consultorio Médico 123', 'Medicina General', 'Calle Secundaria', '456123789', 'info@consultorio.com', 'JKL012', 'Consultorio');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (104, 'Hospital DEF', 'Ginecología', 'Avenida Norte', '321654987', 'info@hospitaldef.com', 'MNO345', 'Hospital');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (105, 'Clínica ABC', 'Dermatología', 'Calle Este', '789456123', 'info@clinicaabc.com', 'PQR678', 'Clínica');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (106, 'Consultorio del Dr. López', 'Psicología', 'Avenida Sur', '654987321', 'info@consultoriodrlopez.com', 'STU901', 'Consultorio');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (107, 'Hospital GHI', 'Oncología', 'Calle Oeste', '987321654', 'info@hospitalghi.com', 'VWX234', 'Hospital');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (108, 'Clínica PQR', 'Ortopedia', 'Avenida Noroeste', '456789123', 'info@clinicapqr.com', 'YZA567', 'Clínica');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (109, 'Consultorio Dra. Martínez', 'Nutrición', 'Calle Suroeste', '321789456', 'info@consultoriomartinez.com', 'BCD890', 'Consultorio');
+
+INSERT INTO Proveedor_Atencion_Medica (ID_Proveedor, Nombre_Proveedor, Especialidad_Proveedor, Direccion, Telefono, Email, Numero_Identificacion_Fiscal, Tipo_Proveedor)
+VALUES (110, 'Hospital JKL', 'Urología', 'Avenida Suroeste', '987654123', 'info@hospitaljkl.com', 'EFG123', 'Hospital');
 
 -- Inserción de datos en la tabla Hospitales
 INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
 VALUES (1, 'Hospital ABC', 'Calle Principal', '987654321', 'DEF456');
 
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (101, 'Hospital XYZ', 'Avenida Principal', '123456789', 'ABC123');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (102, 'Hospital DEF', 'Calle Norte', '789123456', 'GHI789');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (103, 'Hospital GHI', 'Calle Sur', '456789123', 'JKL012');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (104, 'Hospital JKL', 'Calle Este', '987654321', 'MNO345');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (105, 'Hospital MNO', 'Calle Oeste', '654321987', 'PQR678');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (106, 'Hospital PQR', 'Avenida Norte', '321987654', 'STU901');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (107, 'Hospital STU', 'Avenida Sur', '987654321', 'VWX234');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (108, 'Hospital VWX', 'Avenida Este', '654321987', 'YZA567');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (109, 'Hospital YZA', 'Avenida Oeste', '321987654', 'BCD890');
+
+INSERT INTO Hospitales (ID_Hospital, Nombre_Hospital, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (110, 'Hospital BCD', 'Avenida Central', '987654321', 'EFG123');
+
 -- Inserción de datos en la tabla Clínica
 INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
 VALUES (1, 'Clínica XYZ', 'Avenida Central', '123456789', 'GHI789');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (101, 'Clínica ABC', 'Calle Principal', '987654321', 'JKL012');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (102, 'Clínica DEF', 'Calle Norte', '789123456', 'MNO345');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (103, 'Clínica GHI', 'Calle Sur', '456789123', 'PQR678');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (104, 'Clínica JKL', 'Calle Este', '987654321', 'STU901');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (105, 'Clínica MNO', 'Calle Oeste', '654321987', 'VWX234');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (106, 'Clínica PQR', 'Avenida Norte', '321987654', 'YZA567');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (107, 'Clínica STU', 'Avenida Sur', '987654321', 'BCD890');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (108, 'Clínica VWX', 'Avenida Este', '654321987', 'EFG123');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (109, 'Clínica YZA', 'Avenida Oeste', '321987654', 'HIJ456');
+
+INSERT INTO Clinica (ID_Clinica, Nombre_Clinica, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (110, 'Clínica BCD', 'Avenida Central', '987654321', 'KLM789');
 
 -- Inserción de datos en la tabla Consultorios
 INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
 VALUES (1, 'Consultorio Dr. Pérez', 'Plaza Principal', '987654321', 'JKL012');
 
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (101, 'Consultorio Dra. Gómez', 'Calle Principal', '789654123', 'MNO345');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (102, 'Consultorio Dr. López', 'Calle Norte', '654321789', 'PQR678');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (103, 'Consultorio Dra. Martínez', 'Calle Sur', '321987654', 'STU901');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (104, 'Consultorio Dr. Rodríguez', 'Calle Este', '987321654', 'VWX234');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (105, 'Consultorio Dra. Sánchez', 'Calle Oeste', '654789321', 'YZA567');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (106, 'Consultorio Dr. Torres', 'Avenida Norte', '321654987', 'BCD890');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (107, 'Consultorio Dra. Vargas', 'Avenida Sur', '987654321', 'EFG123');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (108, 'Consultorio Dr. Zúñiga', 'Avenida Este', '654987321', 'HIJ456');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (109, 'Consultorio Dra. Álvarez', 'Avenida Oeste', '321654987', 'KLM789');
+
+INSERT INTO Consultorios (ID_Consultorio, Nombre_Consultorio, Direccion, Telefono, Numero_Identificacion_Fiscal)
+VALUES (110, 'Consultorio Dr. Aguilar', 'Plaza Central', '987123654', 'NOP012');
+
+
 -- Inserción de datos en la tabla Farmacia
 INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
 VALUES (1, 'Farmacia Popular', 'Avenida Comercial', '123456789', '8:00 AM - 10:00 PM', 1);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (101, 'Farmacia La Salud', 'Calle Principal', '789654123', '9:00 AM - 8:00 PM', 2);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (102, 'Farmacia San Rafael', 'Avenida Norte', '654321789', '8:30 AM - 7:30 PM', 3);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (103, 'Farmacia Santa María', 'Calle Sur', '321987654', '10:00 AM - 9:00 PM', 104);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (104, 'Farmacia La Esperanza', 'Calle Este', '987321654', '8:00 AM - 6:00 PM', 105);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (105, 'Farmacia El Rosal', 'Calle Oeste', '654789321', '7:00 AM - 5:00 PM', 106);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (106, 'Farmacia San Miguel', 'Avenida Norte', '321654987', '8:30 AM - 7:30 PM', 107);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (107, 'Farmacia San José', 'Avenida Sur', '987654321', '9:00 AM - 8:00 PM', 108);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (108, 'Farmacia El Bosque', 'Avenida Este', '654987321', '10:00 AM - 9:00 PM', 109);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (109, 'Farmacia La Colina', 'Avenida Oeste', '321654987', '7:30 AM - 6:30 PM', 110);
+
+INSERT INTO Farmacia (ID_Farmacia, Nombre, Direccion, Telefono, Horario, ID_Medicamento)
+VALUES (110, 'Farmacia San Gabriel', 'Plaza Central', '987123654', '8:00 AM - 7:00 PM', 3);
 
 -- Inserción de datos en la tabla Solicitud_Autorizacion
 INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
 VALUES (1, 1, 'Consulta Médica', 'Pendiente');
 
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (4, 1, 'Consulta Médica', 'Pendiente');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (5, 2, 'Examen de Laboratorio', 'Aprobada');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (6, 3, 'Cirugía', 'Rechazada');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (7, 101, 'Tratamiento Fisioterapia', 'Pendiente');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (8, 102, 'Consulta Especialista', 'Aprobada');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (9, 103, 'Radiografía', 'Pendiente');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (10, 104, 'Análisis de Sangre', 'Aprobada');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (11, 105, 'Terapia Psicológica', 'Rechazada');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (12, 106, 'Procedimiento Dental', 'Pendiente');
+
+INSERT INTO Solicitud_Autorizacion (ID_Solicitud, ID_Paciente, Tipo_Servicio_Solicitado, Estado_Solicitud)
+VALUES (13, 107, 'Resonancia Magnética', 'Aprobada');
+
 -- Inserción de datos en la tabla Autorizacion
 INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
 VALUES (1, 1, TO_DATE('2024-03-18', 'YYYY-MM-DD'), 'Consulta Médica', 50.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (101, 1, TO_DATE('2024-03-18', 'YYYY-MM-DD'), 'Consulta Médica', 50.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (2, 2, TO_DATE('2024-03-19', 'YYYY-MM-DD'), 'Examen de Laboratorio', 80.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (3, 3, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Cirugía', 1500.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (4, 4, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 'Tratamiento Fisioterapia', 100.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (5, 5, TO_DATE('2024-03-22', 'YYYY-MM-DD'), 'Consulta Especialista', 70.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (6, 6, TO_DATE('2024-03-23', 'YYYY-MM-DD'), 'Radiografía', 60.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (7, 7, TO_DATE('2024-03-24', 'YYYY-MM-DD'), 'Análisis de Sangre', 40.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (8, 8, TO_DATE('2024-03-25', 'YYYY-MM-DD'), 'Terapia Psicológica', 90.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (9, 9, TO_DATE('2024-03-26', 'YYYY-MM-DD'), 'Procedimiento Dental', 120.00);
+
+INSERT INTO Autorizacion (ID_Autorizacion, ID_Solicitud, Fecha_Autorizacion, Tipo_Servicio_Autorizado, Monto_Autorizado)
+VALUES (10, 10, TO_DATE('2024-03-27', 'YYYY-MM-DD'), 'Resonancia Magnética', 200.00);
 
 -- Inserción de datos en la tabla Cita_Medica
 INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
 VALUES (1, 1, 1, 1, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'Programada');
 
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (100, 1, 1, 1, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (2, 2, 101, 101, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 'Examen de laboratorio', 75.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (3, 3, 102, 102, TO_DATE('2024-03-22', 'YYYY-MM-DD'), 'Cirugía programada', 500.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (4, 104, 105, 103, TO_DATE('2024-03-23', 'YYYY-MM-DD'), 'Consulta de seguimiento', 40.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (5, 105, 106, 104, TO_DATE('2024-03-24', 'YYYY-MM-DD'), 'Consulta de especialista', 60.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (6, 106, 107, 105, TO_DATE('2024-03-25', 'YYYY-MM-DD'), 'Estudio radiográfico', 80.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (7, 107, 108, 106, TO_DATE('2024-03-26', 'YYYY-MM-DD'), 'Análisis de sangre', 35.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (8, 108, 109, 107, TO_DATE('2024-03-27', 'YYYY-MM-DD'), 'Terapia psicológica', 55.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (9, 109, 110, 108, TO_DATE('2024-03-28', 'YYYY-MM-DD'), 'Procedimiento dental', 100.00, 'Programada');
+
+INSERT INTO Cita_Medica (ID_Cita, ID_Paciente, ID_Proveedor, ID_Centro_Atencion, Fecha_Cita, Razon_Cita, Costo, Estado)
+VALUES (10, 110, 101, 109, TO_DATE('2024-03-29', 'YYYY-MM-DD'), 'Resonancia magnética', 150.00, 'Programada');
+
 -- Inserción de datos en la tabla Historial_Médico
 INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
 VALUES (1, 1, 1, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Sin diagnóstico', 'Reposo', 'Paracetamol');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (101, 1, 101, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Sin diagnóstico', 'Reposo', 'Paracetamol');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (102, 2, 102, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 'Presión arterial alta', 'Control de la dieta', 'Losartán');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (103, 3, 103, TO_DATE('2024-03-22', 'YYYY-MM-DD'), 'Apnea del sueño', 'Uso de CPAP durante el sueño', 'CPAP');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (4, 101, 104, TO_DATE('2024-03-23', 'YYYY-MM-DD'), 'Esguince de tobillo', 'Inmovilización y terapia física', 'Ibuprofeno');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (5, 104, 105, TO_DATE('2024-03-24', 'YYYY-MM-DD'), 'Gripe común', 'Reposo y líquidos', 'Paracetamol');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (6, 103, 106, TO_DATE('2024-03-25', 'YYYY-MM-DD'), 'Fractura de muñeca', 'Inmovilización y fisioterapia', 'Ibuprofeno');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (7, 102, 107, TO_DATE('2024-03-26', 'YYYY-MM-DD'), 'Anemia leve', 'Suplementos de hierro y ácido fólico', 'Hierro');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (8, 105, 108, TO_DATE('2024-03-27', 'YYYY-MM-DD'), 'Ansiedad', 'Terapia cognitivo-conductual', 'Alprazolam');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (9, 106, 109, TO_DATE('2024-03-28', 'YYYY-MM-DD'), 'Caries dental', 'Extracción y cuidado oral', 'Anestesia local');
+
+INSERT INTO Historial_Médico (ID_Historial, ID_Paciente, ID_Proveedor, Fecha_Visita, Diagnostico, Tratamiento_Prescrito, Medicamento_Recetado)
+VALUES (10, 107, 110, TO_DATE('2024-03-29', 'YYYY-MM-DD'), 'Lesión en la rodilla', 'Reposo y terapia física', 'Diclofenaco');
 
 -- Inserción de datos en la tabla Facturas
 INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
 VALUES (1, 1, 1, 1, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'Pagada');
 
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (101, 1, 1, 1, TO_DATE('2024-03-20', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'Pagada');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (2, 2, 101, 2, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 'Examen de laboratorio', 80.00, 'Pendiente');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (3, 3, 102, 3, TO_DATE('2024-03-22', 'YYYY-MM-DD'), 'Cirugía de apendicitis', 1500.00, 'Pagada');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (4, 104, 103, 101, TO_DATE('2024-03-23', 'YYYY-MM-DD'), 'Tratamiento de fisioterapia', 120.00, 'Pendiente');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (5, 105, 104, 102, TO_DATE('2024-03-24', 'YYYY-MM-DD'), 'Consulta con especialista', 70.00, 'Pagada');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (6, 106, 105, 103, TO_DATE('2024-03-25', 'YYYY-MM-DD'), 'Radiografía de muñeca', 60.00, 'Pendiente');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (7, 107, 106, 104, TO_DATE('2024-03-26', 'YYYY-MM-DD'), 'Análisis de sangre', 40.00, 'Pagada');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (8, 108, 107, 105, TO_DATE('2024-03-27', 'YYYY-MM-DD'), 'Terapia psicológica', 90.00, 'Pagada');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (9, 109, 108, 106, TO_DATE('2024-03-28', 'YYYY-MM-DD'), 'Procedimiento dental', 100.00, 'Pendiente');
+
+INSERT INTO Facturas (ID_Factura, ID_Paciente, ID_Proveedor, ID_Medicamento, Fecha_Factura, Descripcion_Servicio, Monto_Facturado, Estado)
+VALUES (10, 110, 109, 107, TO_DATE('2024-03-29', 'YYYY-MM-DD'), 'Resonancia magnética', 200.00, 'Pagada');
+
 -- Inserción de datos en la tabla Pago
 INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
 VALUES (1, 1, 1, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 50.00, 'Efectivo');
 
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (101, 1, 1, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 50.00, 'Efectivo');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (12, 2, 2, TO_DATE('2024-03-22', 'YYYY-MM-DD'), 80.00, 'Tarjeta de crédito');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (13, 3, 3, TO_DATE('2024-03-23', 'YYYY-MM-DD'), 1500.00, 'Transferencia bancaria');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (14, 4, 4, TO_DATE('2024-03-24', 'YYYY-MM-DD'), 120.00, 'Efectivo');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (15, 5, 5, TO_DATE('2024-03-25', 'YYYY-MM-DD'), 70.00, 'Tarjeta de débito');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (16, 6, 6, TO_DATE('2024-03-26', 'YYYY-MM-DD'), 60.00, 'Efectivo');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (17, 7, 7, TO_DATE('2024-03-27', 'YYYY-MM-DD'), 40.00, 'Tarjeta de crédito');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (18, 8, 8, TO_DATE('2024-03-28', 'YYYY-MM-DD'), 90.00, 'Transferencia bancaria');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (19, 9, 9, TO_DATE('2024-03-29', 'YYYY-MM-DD'), 100.00, 'Efectivo');
+
+INSERT INTO Pago (ID_Pago, ID_Factura, ID_Paciente, Fecha_Pago, Monto_Pagado, Metodo_Pago)
+VALUES (110, 10, 10, TO_DATE('2024-03-30', 'YYYY-MM-DD'), 200.00, 'Tarjeta de débito');
+
 -- Inserción de datos en la tabla Reclamacion
 INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
 VALUES (1, 1, 1, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'En revisión');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (101, 1, 1, TO_DATE('2024-03-21', 'YYYY-MM-DD'), 'Consulta de rutina', 50.00, 'En revisión');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (2, 2, 101, TO_DATE('2024-03-22', 'YYYY-MM-DD'), 'Examen de laboratorio', 80.00, 'Pendiente');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (3, 3, 102, TO_DATE('2024-03-23', 'YYYY-MM-DD'), 'Cirugía', 1500.00, 'Aprobada');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (4, 104, 103, TO_DATE('2024-03-24', 'YYYY-MM-DD'), 'Tratamiento fisioterapia', 120.00, 'En revisión');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (5, 105, 104, TO_DATE('2024-03-25', 'YYYY-MM-DD'), 'Consulta con especialista', 70.00, 'Pendiente');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (6, 106, 105, TO_DATE('2024-03-26', 'YYYY-MM-DD'), 'Radiografía', 60.00, 'Aprobada');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (7, 107, 106, TO_DATE('2024-03-27', 'YYYY-MM-DD'), 'Análisis de sangre', 40.00, 'En revisión');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (8, 108, 107, TO_DATE('2024-03-28', 'YYYY-MM-DD'), 'Terapia psicológica', 90.00, 'Pendiente');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (9, 109, 108, TO_DATE('2024-03-29', 'YYYY-MM-DD'), 'Procedimiento dental', 100.00, 'Aprobada');
+
+INSERT INTO Reclamacion (ID_Reclamacion, ID_Paciente, ID_Proveedor, Fecha_Reclamacion, Servicio_Reclamado, Monto_Reclamado, Estado)
+VALUES (10, 110, 109, TO_DATE('2024-03-30', 'YYYY-MM-DD'), 'Resonancia magnética', 200.00, 'En revisión');
 
 
 -- Select para todas las tablas
@@ -454,7 +973,19 @@ SELECT * FROM Facturas;
 SELECT * FROM Pago;
 SELECT * FROM Reclamacion;
 SELECT * FROM Auditoria_Facturas;
+SELECT table_name FROM user_tables;
 
+--Select para los jobs
+SELECT * FROM USER_SCHEDULER_JOB_RUN_DETAILS;
+
+--Select de los sinonimos
+SELECT * FROM sinonimo1;
+SELECT * FROM sinonimo2;
+SELECT * FROM sinonimo3;
+
+
+--Select de index
+SELECT index_name FROM user_indexes;
 
 -- Select de las vistas
 SELECT * FROM Vista_Pacientes_Planes_Seguro;
@@ -462,6 +993,13 @@ Select * from Vista_Facturas_Detallada;
 Select * from Vista_Medicamentos_Farmacias;
 Select * from Vista_Citas_Medicas;
 Select * from Vista_Historial_Medico;
+
+-- Select adicionales
+select constraint_name from user_constraints;
+select trigger_name from user_triggers;
+select * from user_objects where object_type = 'PROCEDURE'
+select * from user_objects where object_type = 'VIEW'
+select * from user_db_links;
 
 -- Creacion de las vista
 
